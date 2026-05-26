@@ -1084,25 +1084,28 @@ export async function handleServerDetail(request, env, sys, viewId) {
     }
     
     // =============================================
-    // 加载所有历史数据
+    // 加载所有历史数据（合并请求，减少API调用）
     // =============================================
     async function loadAllHistory(hours) {
       try {
-        const metrics = [
-          'cpu', 'ram', 'disk', 'processes',
-          'net_in_speed', 'net_out_speed',
-          'tcp_conn', 'udp_conn',
-          'ping_ct', 'ping_cu', 'ping_cm', 'ping_bd'
-        ];
+        // 一次性获取所有指标数据
+        const res = await fetch(\`/api/history/all?id=\${serverId}&hours=\${hours}\`);
+        if (!res.ok) return;
+        const allData = await res.json();
         
-        const results = await Promise.all(metrics.map(m => fetchHistory(m, hours)));
-        
-        const [
-          cpuData, ramData, diskData, procData,
-          netInData, netOutData,
-          tcpData, udpData,
-          pingCtData, pingCuData, pingCmData, pingBdData
-        ] = results;
+        // 按指标分类数据
+        const cpuData = allData.map(d => ({ x: d.timestamp, y: parseFloat(d.cpu) || 0 }));
+        const ramData = allData.map(d => ({ x: d.timestamp, y: parseFloat(d.ram) || 0 }));
+        const diskData = allData.map(d => ({ x: d.timestamp, y: parseFloat(d.disk) || 0 }));
+        const procData = allData.map(d => ({ x: d.timestamp, y: parseInt(d.processes) || 0 }));
+        const netInData = allData.map(d => ({ x: d.timestamp, y: parseFloat(d.net_in_speed) || 0 }));
+        const netOutData = allData.map(d => ({ x: d.timestamp, y: parseFloat(d.net_out_speed) || 0 }));
+        const tcpData = allData.map(d => ({ x: d.timestamp, y: parseInt(d.tcp_conn) || 0 }));
+        const udpData = allData.map(d => ({ x: d.timestamp, y: parseInt(d.udp_conn) || 0 }));
+        const pingCtData = allData.map(d => ({ x: d.timestamp, y: parseInt(d.ping_ct) || 0 }));
+        const pingCuData = allData.map(d => ({ x: d.timestamp, y: parseInt(d.ping_cu) || 0 }));
+        const pingCmData = allData.map(d => ({ x: d.timestamp, y: parseInt(d.ping_cm) || 0 }));
+        const pingBdData = allData.map(d => ({ x: d.timestamp, y: parseInt(d.ping_bd) || 0 }));
         
         // 更新各个图表
         updateChartDataset(charts.cpu, 0, cpuData, 'timestamp', 'cpu');

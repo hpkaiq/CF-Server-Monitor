@@ -56,12 +56,12 @@ export default {
       
       // 查询同时兼容两种格式：数字时间戳和日期时间字符串
       const history = await env.DB.prepare(`
-        SELECT timestamp, ${metric} 
-        FROM metrics_history 
-        WHERE server_id = ? 
+        SELECT timestamp, ${metric}
+        FROM metrics_history
+        WHERE server_id = ?
         AND (
           (typeof(timestamp) = 'integer' AND timestamp > ?)
-          OR 
+          OR
           (typeof(timestamp) = 'text' AND timestamp > datetime('now', '-' || ? || ' hours'))
         )
         ORDER BY timestamp ASC
@@ -71,6 +71,49 @@ export default {
       const processed = history.results.map(row => {
         let ts = row.timestamp;
         // 如果是字符串格式，转换为时间戳
+        if (typeof ts === 'string') {
+          ts = new Date(ts).getTime();
+        }
+        return {
+          ...row,
+          timestamp: ts
+        };
+      });
+      
+      return new Response(JSON.stringify(processed), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 服务器详情 API（一次性获取所有指标历史数据）
+    if (request.method === 'GET' && url.pathname === '/api/history/all') {
+      const id = url.searchParams.get('id');
+      const hours = parseFloat(url.searchParams.get('hours') || '24');
+      
+      if (!id) return new Response('Missing ID', { status: 400 });
+      
+      const now = Date.now();
+      const cutoff = now - (hours * 60 * 60 * 1000);
+      
+      // 一次性查询所有指标
+      const history = await env.DB.prepare(`
+        SELECT timestamp, cpu, ram, disk, processes,
+               net_in_speed, net_out_speed,
+               tcp_conn, udp_conn,
+               ping_ct, ping_cu, ping_cm, ping_bd
+        FROM metrics_history
+        WHERE server_id = ?
+        AND (
+          (typeof(timestamp) = 'integer' AND timestamp > ?)
+          OR
+          (typeof(timestamp) = 'text' AND timestamp > datetime('now', '-' || ? || ' hours'))
+        )
+        ORDER BY timestamp ASC
+      `).bind(id, cutoff, hours).all();
+      
+      // 转换旧格式的日期字符串为时间戳
+      const processed = history.results.map(row => {
+        let ts = row.timestamp;
         if (typeof ts === 'string') {
           ts = new Date(ts).getTime();
         }
